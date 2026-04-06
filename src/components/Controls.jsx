@@ -13,9 +13,17 @@ export default function Controls({
   theme, setTheme,
   sensitivity, setSensitivity,
   gain, setGain,
-  isActive, onToggle,
+  isActive, audioSource,
+  onToggle, onFileSelect,
   onScreenshot, onFullscreen,
 }) {
+  const fileInputRef = useRef(null)
+
+  const handleFileChange = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (file) onFileSelect(file)
+    e.target.value = ''
+  }, [onFileSelect])
   const [visible, setVisible] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const hideTimer = useRef(null)
@@ -158,17 +166,37 @@ export default function Controls({
             ))}
           </div>
 
+          {/* File upload button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className={`${btnSm} ${audioSource === 'file' ? 'bg-white/20 text-white' : 'bg-white/10 text-white/50 hover:text-white/80 hover:bg-white/15'} backdrop-blur-sm`}
+            title="Load audio file"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18V5l12-2v13"/>
+              <circle cx="6" cy="18" r="3"/>
+              <circle cx="18" cy="16" r="3"/>
+            </svg>
+          </button>
+
           {/* Mic toggle */}
           <button
             onClick={onToggle}
             className={`${btnBase} w-14 h-14 text-lg ${
-              isActive
+              isActive && audioSource === 'mic'
                 ? 'bg-white/20 text-white shadow-lg'
                 : 'bg-white/10 text-white/60 hover:text-white hover:bg-white/15'
             } backdrop-blur-sm`}
-            style={isActive ? { boxShadow: `0 0 25px ${THEMES[theme].colors[0]}44` } : {}}
+            style={isActive && audioSource === 'mic' ? { boxShadow: `0 0 25px ${THEMES[theme].colors[0]}44` } : {}}
           >
-            {isActive ? (
+            {isActive && audioSource === 'mic' ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
                 <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>

@@ -6,12 +6,50 @@ export function useAudio() {
   const sourceRef = useRef(null)
   const streamRef = useRef(null)
   const gainNodeRef = useRef(null)
+  const bufferSourceRef = useRef(null)
   const [isActive, setIsActive] = useState(false)
+  const [audioSource, setAudioSource] = useState(null) // 'mic' | 'file' | null
   const [error, setError] = useState(null)
+
+  const cleanup = useCallback(() => {
+    if (bufferSourceRef.current) {
+      try { bufferSourceRef.current.stop() } catch (_) { /* already stopped */ }
+      bufferSourceRef.current.disconnect()
+      bufferSourceRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    if (sourceRef.current) {
+      sourceRef.current.disconnect()
+      sourceRef.current = null
+    }
+    if (gainNodeRef.current) {
+      gainNodeRef.current.disconnect()
+      gainNodeRef.current = null
+    }
+    if (analyserRef.current) {
+      analyserRef.current.disconnect()
+      analyserRef.current = null
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close()
+      audioCtxRef.current = null
+    }
+  }, [])
+
+  const stop = useCallback(() => {
+    cleanup()
+    setIsActive(false)
+    setAudioSource(null)
+  }, [cleanup])
 
   const start = useCallback(async () => {
     try {
       setError(null)
+      cleanup()
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -33,30 +71,55 @@ export function useAudio() {
       source.connect(gainNode)
       gainNode.connect(analyser)
 
+      setAudioSource('mic')
       setIsActive(true)
     } catch (err) {
       setError(err.message || 'Microphone access denied')
       setIsActive(false)
     }
-  }, [])
+  }, [cleanup])
 
-  const stop = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
+  const startFile = useCallback(async (file) => {
+    try {
+      setError(null)
+      cleanup()
+
+      const ctx = new (window.AudioContext || window.webkitAudioContext)()
+      audioCtxRef.current = ctx
+
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 2048
+      analyser.smoothingTimeConstant = 0.8
+      analyserRef.current = analyser
+
+      const gainNode = ctx.createGain()
+      gainNode.gain.value = 1.0
+      gainNodeRef.current = gainNode
+
+      const arrayBuffer = await file.arrayBuffer()
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+
+      const source = ctx.createBufferSource()
+      source.buffer = audioBuffer
+      bufferSourceRef.current = source
+
+      source.connect(gainNode)
+      gainNode.connect(analyser)
+      analyser.connect(ctx.destination)
+
+      source.onended = () => {
+        setIsActive(false)
+        setAudioSource(null)
+      }
+
+      source.start(0)
+      setAudioSource('file')
+      setIsActive(true)
+    } catch (err) {
+      setError(err.message || 'Failed to load audio file')
+      setIsActive(false)
     }
-    if (sourceRef.current) {
-      sourceRef.current.disconnect()
-      sourceRef.current = null
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close()
-      audioCtxRef.current = null
-    }
-    analyserRef.current = null
-    gainNodeRef.current = null
-    setIsActive(false)
-  }, [])
+  }, [cleanup])
 
   const setGain = useCallback((value) => {
     if (gainNodeRef.current) {
@@ -85,13 +148,15 @@ export function useAudio() {
   }, [])
 
   useEffect(() => {
-    return () => stop()
-  }, [stop])
+    return () => cleanup()
+  }, [cleanup])
 
   return {
     isActive,
+    audioSource,
     error,
     start,
+    startFile,
     stop,
     setGain,
     getFrequencyData,
